@@ -251,6 +251,14 @@
   <!-- 요약 탭 -->
   <section class="panel" id="panel-summary">
     <div class="card">
+      <h3>환율 정보</h3>
+      <div id="rateInfo"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="refreshRateBtn">🔄 환율 새로고침</button>
+      </div>
+      <div class="status-msg" id="rateInfoStatus"></div>
+    </div>
+    <div class="card">
       <h3>카테고리별 합계</h3>
       <div id="categorySummary"></div>
     </div>
@@ -273,7 +281,7 @@
   </section>
 
   <footer class="bottom-note">
-    ⚠️ 1단계(OCR 자동분류) 버전입니다. 환율은 임시 고정값이며, 실시간 환율 연동은 2단계에서 추가될 예정입니다.
+    ⚠️ 2단계(실시간 환율) 적용 버전입니다. 인터넷 연결 시 자동으로 최신 환율을 받아오고, 오프라인일 때는 마지막으로 받은 환율을 사용합니다.
   </footer>
 </div>
 
@@ -312,6 +320,6 @@
   </div>
 </div>
 
-<script src="expense_app.js?v=2"></script>
+<script src="expense_app.js?v=3"></script>
 </body>
 </html>

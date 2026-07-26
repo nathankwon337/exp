@@ -9,7 +9,7 @@
 // 배포한 Apps Script 웹앱 URL을 여기 기본값으로 넣어두면 매번 입력할 필요가 없습니다.
 const DEFAULT_WEBHOOK_URL = '';
 
-// 임시 고정 환율 (2단계에서 실시간 API로 교체 예정)
+// 임시 고정 환율 (API 실패·최초 실행 시 최후 수단으로만 사용)
 const FALLBACK_RATES_TO_KRW = {
   EUR: 1480,
   CZK: 59,
@@ -17,8 +17,16 @@ const FALLBACK_RATES_TO_KRW = {
   KRW: 1
 };
 
+// 실시간 환율 API (Frankfurter, ECB 데이터 기반, API 키 불필요, 무료)
+const EXCHANGE_API_URL = 'https://api.frankfurter.dev/v1/latest?base=KRW&symbols=EUR,CZK,CHF';
+const EXCHANGE_CACHE_KEY = 'expenseTrackerExchangeRates_v1';
+
 const STORAGE_KEY = 'expenseTrackerData_v1';
 const WEBHOOK_KEY = 'expenseTrackerWebhookUrl';
+
+// 현재 사용 중인 환율 (KRW 환산 기준). 캐시/API 로드 전까지는 고정값으로 시작.
+let currentRates = Object.assign({}, FALLBACK_RATES_TO_KRW);
+let ratesFetchedAt = null; // ISO 문자열 또는 null(고정값 사용 중)
 
 const CATEGORY_EMOJI = {
   '식비': '🍽️', '교통': '🚌', '숙박': '🛏️', '쇼핑': '🛍️', '관광입장료': '🎫', '기타': '📦'
@@ -31,16 +39,20 @@ let state = {
 // ===== 초기화 =====
 document.addEventListener('DOMContentLoaded', () => {
   loadFromLocalStorage();
+  loadCachedRates();
   bindTabNav();
   bindScanTab();
   bindManualForm();
   bindEditModal();
   bindSyncButtons();
+  bindRateRefresh();
 
   const savedUrl = localStorage.getItem(WEBHOOK_KEY) || DEFAULT_WEBHOOK_URL;
   document.getElementById('webhookUrlInput').value = savedUrl;
 
   render();
+  // 화면은 캐시/고정값으로 먼저 그리고, 온라인이면 백그라운드로 최신 환율을 받아와 갱신
+  refreshExchangeRates(false);
 });
 
 function loadFromLocalStorage() {
@@ -245,19 +257,100 @@ function render() {
   renderTotal();
   renderList();
   renderSummary();
+  renderRateInfo();
 }
 
 function toKrw(amount, currency) {
-  const rate = FALLBACK_RATES_TO_KRW[currency] || 0;
+  const rate = currentRates[currency] || FALLBACK_RATES_TO_KRW[currency] || 0;
   return amount * rate;
+}
+
+// ===== 환율 캐시 로드 =====
+function loadCachedRates() {
+  try {
+    const raw = localStorage.getItem(EXCHANGE_CACHE_KEY);
+    if (!raw) return;
+    const cached = JSON.parse(raw);
+    if (cached && cached.rates) {
+      currentRates = Object.assign({}, FALLBACK_RATES_TO_KRW, cached.rates, { KRW: 1 });
+      ratesFetchedAt = cached.fetchedAt || null;
+    }
+  } catch (e) {
+    // 캐시가 손상된 경우 고정값을 그대로 사용
+  }
+}
+
+function saveRatesToCache() {
+  localStorage.setItem(EXCHANGE_CACHE_KEY, JSON.stringify({ rates: currentRates, fetchedAt: ratesFetchedAt }));
+}
+
+// ===== 실시간 환율 갱신 =====
+// showStatus: true면 요약 탭의 새로고침 버튼 클릭 등 사용자가 직접 요청한 경우 (에러 메시지를 눈에 띄게 표시)
+async function refreshExchangeRates(showStatus) {
+  const rateInfoStatusEl = document.getElementById('rateInfoStatus');
+  try {
+    const res = await fetch(EXCHANGE_API_URL);
+    if (!res.ok) throw new Error('환율 서버 응답 오류');
+    const data = await res.json();
+    if (!data.rates) throw new Error('환율 데이터 형식 오류');
+
+    // Frankfurter는 base=KRW 기준 "1 KRW = x 통화" 값을 주므로, 역수를 취해 "1 통화 = x KRW"로 변환
+    const newRates = { KRW: 1 };
+    Object.keys(data.rates).forEach(cur => {
+      if (data.rates[cur] > 0) newRates[cur] = 1 / data.rates[cur];
+    });
+
+    currentRates = Object.assign({}, FALLBACK_RATES_TO_KRW, newRates);
+    ratesFetchedAt = new Date().toISOString();
+    saveRatesToCache();
+    render();
+    if (showStatus && rateInfoStatusEl) {
+      rateInfoStatusEl.textContent = '✅ 환율을 최신으로 갱신했습니다.';
+      rateInfoStatusEl.className = 'status-msg ok';
+    }
+  } catch (err) {
+    // 오프라인이거나 API 실패 시: 이미 로드된 캐시/고정값을 그대로 사용 (조용히 실패)
+    if (showStatus && rateInfoStatusEl) {
+      rateInfoStatusEl.textContent = '⚠️ 환율을 새로 받아오지 못했습니다 (오프라인일 수 있음). 마지막으로 받은 환율을 사용합니다.';
+      rateInfoStatusEl.className = 'status-msg error';
+    }
+  }
+}
+
+function bindRateRefresh() {
+  document.getElementById('refreshRateBtn').addEventListener('click', () => {
+    const el = document.getElementById('rateInfoStatus');
+    if (el) { el.textContent = '환율을 받아오는 중...'; el.className = 'status-msg'; }
+    refreshExchangeRates(true);
+  });
+}
+
+function rateFreshnessLabel() {
+  if (!ratesFetchedAt) return '환율: 임시 고정값 사용 중';
+  const diffMs = Date.now() - new Date(ratesFetchedAt).getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return '환율: 방금 갱신됨';
+  if (diffMin < 60) return '환율: ' + diffMin + '분 전 기준';
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return '환율: ' + diffHour + '시간 전 기준';
+  const diffDay = Math.floor(diffHour / 24);
+  return '환율: ' + diffDay + '일 전 기준';
+}
+
+function renderRateInfo() {
+  const el = document.getElementById('rateInfo');
+  if (!el) return;
+  const rows = ['EUR', 'CZK', 'CHF'].map(cur =>
+    '<div class="summary-row"><span>1 ' + cur + '</span><span class="amt">₩' + Math.round(currentRates[cur] || 0).toLocaleString() + '</span></div>'
+  ).join('');
+  el.innerHTML = rows + '<div class="meta" style="margin-top:6px;">' + rateFreshnessLabel() + '</div>';
 }
 
 function renderTotal() {
   const totalKrw = state.expenses.reduce((sum, e) => sum + toKrw(e.amount, e.currency), 0);
   document.getElementById('totalKrw').textContent = '₩' + Math.round(totalKrw).toLocaleString();
-  document.getElementById('totalSub').textContent = state.expenses.length
-    ? state.expenses.length + '건 등록됨 (임시 환율 기준 환산)'
-    : '아직 등록된 지출이 없습니다';
+  const countText = state.expenses.length ? state.expenses.length + '건 등록됨' : '아직 등록된 지출이 없습니다';
+  document.getElementById('totalSub').textContent = countText + (state.expenses.length ? ' · ' + rateFreshnessLabel() : '');
 }
 
 function renderList() {
