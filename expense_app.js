@@ -82,32 +82,47 @@ function bindTabNav() {
 }
 
 // ===== 촬영 탭 =====
-let pendingImageBase64 = null;
+let pendingImageBase64 = null; // 최종적으로 분석에 사용할 (크롭된) 이미지
 let pendingImageMime = null;
+let rawSelectedDataUrl = null; // 크롭 전 원본 (data URL)
 
 function bindScanTab() {
-  const fileInput = document.getElementById('fileInput');
-  const previewImg = document.getElementById('previewImg');
+  const cameraInput = document.getElementById('cameraInput');
+  const galleryInput = document.getElementById('galleryInput');
   const analyzeBtn = document.getElementById('analyzeBtn');
   const statusEl = document.getElementById('scanStatus');
 
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files[0];
+  document.getElementById('cameraBtn').addEventListener('click', () => cameraInput.click());
+  document.getElementById('galleryBtn').addEventListener('click', () => galleryInput.click());
+
+  cameraInput.addEventListener('change', () => handleFileSelected(cameraInput.files[0]));
+  galleryInput.addEventListener('change', () => handleFileSelected(galleryInput.files[0]));
+
+  function handleFileSelected(file) {
     if (!file) return;
     pendingImageMime = file.type || 'image/jpeg';
-
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result;
-      pendingImageBase64 = dataUrl.split(',')[1];
-      previewImg.src = dataUrl;
-      previewImg.style.display = 'block';
-      analyzeBtn.disabled = false;
+      rawSelectedDataUrl = reader.result;
+      openCropStage(rawSelectedDataUrl);
       statusEl.textContent = '';
       statusEl.className = 'status-msg';
     };
     reader.readAsDataURL(file);
+  }
+
+  document.getElementById('cropConfirmBtn').addEventListener('click', () => {
+    const dataUrl = cropSelectedRegion();
+    finishSelection(dataUrl);
   });
+  document.getElementById('cropSkipBtn').addEventListener('click', () => {
+    finishSelection(rawSelectedDataUrl);
+  });
+  document.getElementById('retakeBtn').addEventListener('click', () => {
+    resetCaptureBox();
+  });
+
+  bindCropDragHandlers();
 
   analyzeBtn.addEventListener('click', async () => {
     const webhookUrl = localStorage.getItem(WEBHOOK_KEY) || DEFAULT_WEBHOOK_URL;
@@ -119,8 +134,9 @@ function bindScanTab() {
     if (!pendingImageBase64) return;
 
     analyzeBtn.disabled = true;
-    statusEl.textContent = '🤖 영수증을 분석하는 중입니다...';
+    statusEl.textContent = '🤖 영수증을 스캔하는 중입니다...';
     statusEl.className = 'status-msg';
+    setScanningEffect(true);
 
     try {
       const res = await fetch(webhookUrl, {
@@ -137,13 +153,142 @@ function bindScanTab() {
       statusEl.textContent = '✅ 분석 완료! 내용을 확인하고 저장하세요.';
       statusEl.className = 'status-msg ok';
       openEditModal(buildExpenseFromExtracted(data.extracted), 'new-from-ocr');
+      resetCaptureBox();
     } catch (err) {
       statusEl.textContent = '⚠️ 분석 실패: ' + err.message + ' (직접입력 탭에서 수동으로 입력할 수 있습니다)';
       statusEl.className = 'status-msg error';
     } finally {
       analyzeBtn.disabled = false;
+      setScanningEffect(false);
     }
   });
+}
+
+function setScanningEffect(on) {
+  const scanWrap = document.getElementById('scanWrap');
+  const scanLine = document.getElementById('scanLine');
+  if (!scanWrap || !scanLine) return;
+  scanWrap.classList.toggle('scanning', on);
+  scanLine.style.display = on ? 'block' : 'none';
+}
+
+// ----- 화면 전환 헬퍼 -----
+function resetCaptureBox() {
+  document.getElementById('captureInitial').style.display = 'block';
+  document.getElementById('cropStage').style.display = 'none';
+  document.getElementById('previewStage').style.display = 'none';
+  document.getElementById('analyzeBtn').disabled = true;
+  document.getElementById('cameraInput').value = '';
+  document.getElementById('galleryInput').value = '';
+  pendingImageBase64 = null;
+  rawSelectedDataUrl = null;
+}
+
+function openCropStage(dataUrl) {
+  document.getElementById('captureInitial').style.display = 'none';
+  document.getElementById('previewStage').style.display = 'none';
+  document.getElementById('cropStage').style.display = 'block';
+
+  const cropImg = document.getElementById('cropImg');
+  cropImg.onload = () => {
+    // 이미지 로드 후 크롭 박스를 중앙 80% 영역으로 기본 배치
+    const wrap = document.getElementById('cropWrap');
+    const w = cropImg.clientWidth, h = cropImg.clientHeight;
+    const boxW = w * 0.8, boxH = h * 0.8;
+    const box = document.getElementById('cropBox');
+    box.style.left = ((w - boxW) / 2) + 'px';
+    box.style.top = ((h - boxH) / 2) + 'px';
+    box.style.width = boxW + 'px';
+    box.style.height = boxH + 'px';
+  };
+  cropImg.src = dataUrl;
+}
+
+function finishSelection(dataUrl) {
+  pendingImageBase64 = dataUrl.split(',')[1];
+  document.getElementById('cropStage').style.display = 'none';
+  document.getElementById('previewStage').style.display = 'block';
+  document.getElementById('previewImg').src = dataUrl;
+  document.getElementById('analyzeBtn').disabled = false;
+}
+
+// ----- 크롭 박스 드래그(이동) / 핸들 드래그(크기조절) -----
+function bindCropDragHandlers() {
+  const wrap = document.getElementById('cropWrap');
+  const box = document.getElementById('cropBox');
+  const handle = document.getElementById('cropHandle');
+
+  let mode = null; // 'move' | 'resize'
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0, startW = 0, startH = 0;
+
+  function pointerDown(e, m) {
+    e.preventDefault();
+    mode = m;
+    const p = getPoint(e);
+    startX = p.x; startY = p.y;
+    startLeft = parseFloat(box.style.left) || 0;
+    startTop = parseFloat(box.style.top) || 0;
+    startW = parseFloat(box.style.width) || 0;
+    startH = parseFloat(box.style.height) || 0;
+  }
+
+  function pointerMove(e) {
+    if (!mode) return;
+    e.preventDefault();
+    const p = getPoint(e);
+    const dx = p.x - startX, dy = p.y - startY;
+    const wrapW = wrap.clientWidth, wrapH = wrap.clientHeight;
+
+    if (mode === 'move') {
+      let newLeft = clamp(startLeft + dx, 0, wrapW - startW);
+      let newTop = clamp(startTop + dy, 0, wrapH - startH);
+      box.style.left = newLeft + 'px';
+      box.style.top = newTop + 'px';
+    } else if (mode === 'resize') {
+      let newW = clamp(startW + dx, 40, wrapW - startLeft);
+      let newH = clamp(startH + dy, 40, wrapH - startTop);
+      box.style.width = newW + 'px';
+      box.style.height = newH + 'px';
+    }
+  }
+
+  function pointerUp() { mode = null; }
+
+  function getPoint(e) {
+    if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  box.addEventListener('mousedown', (e) => { if (e.target === box) pointerDown(e, 'move'); });
+  box.addEventListener('touchstart', (e) => { if (e.target === box) pointerDown(e, 'move'); }, { passive: false });
+  handle.addEventListener('mousedown', (e) => pointerDown(e, 'resize'));
+  handle.addEventListener('touchstart', (e) => pointerDown(e, 'resize'), { passive: false });
+
+  window.addEventListener('mousemove', pointerMove);
+  window.addEventListener('touchmove', pointerMove, { passive: false });
+  window.addEventListener('mouseup', pointerUp);
+  window.addEventListener('touchend', pointerUp);
+}
+
+function cropSelectedRegion() {
+  const cropImg = document.getElementById('cropImg');
+  const box = document.getElementById('cropBox');
+
+  const scaleX = cropImg.naturalWidth / cropImg.clientWidth;
+  const scaleY = cropImg.naturalHeight / cropImg.clientHeight;
+
+  const sx = (parseFloat(box.style.left) || 0) * scaleX;
+  const sy = (parseFloat(box.style.top) || 0) * scaleY;
+  const sw = (parseFloat(box.style.width) || cropImg.clientWidth) * scaleX;
+  const sh = (parseFloat(box.style.height) || cropImg.clientHeight) * scaleY;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = sw;
+  canvas.height = sh;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(cropImg, sx, sy, sw, sh, 0, 0, sw, sh);
+  return canvas.toDataURL('image/jpeg', 0.92);
 }
 
 function buildExpenseFromExtracted(extracted) {

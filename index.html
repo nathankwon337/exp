@@ -139,6 +139,53 @@
   .status-msg.error{color:var(--red);}
   .status-msg.ok{color:var(--green);}
 
+  /* 크롭 UI */
+  .crop-wrap{
+    position:relative;display:inline-block;max-width:100%;
+    margin-top:10px;touch-action:none;user-select:none;
+  }
+  .crop-wrap img{display:block;max-width:100%;border-radius:8px;}
+  .crop-box{
+    position:absolute;border:2px solid var(--red);
+    box-shadow:0 0 0 2000px rgba(0,0,0,0.45);
+    cursor:move;
+  }
+  .crop-handle{
+    position:absolute;width:22px;height:22px;
+    background:var(--red);border-radius:50%;
+    right:-11px;bottom:-11px;cursor:nwse-resize;
+    border:2px solid #fff;
+  }
+
+  /* 스캔 애니메이션 */
+  .scan-wrap{position:relative;display:inline-block;max-width:100%;margin-top:10px;}
+  .scan-wrap img{display:block;max-width:100%;border-radius:8px;}
+  .scan-line{
+    position:absolute;left:0;right:0;top:0;height:3px;
+    background:linear-gradient(90deg, transparent, var(--green), transparent);
+    box-shadow:0 0 12px 2px var(--green);
+    animation:scan-move 1.6s linear infinite;
+  }
+  .scan-wrap.scanning::after{
+    content:'';position:absolute;inset:0;
+    background:repeating-linear-gradient(
+      to bottom, rgba(76,107,79,0.08) 0px, rgba(76,107,79,0.08) 2px,
+      transparent 2px, transparent 4px
+    );
+    animation:scan-flicker 1.6s linear infinite;
+  }
+  @keyframes scan-move{
+    0%{top:0%;}
+    100%{top:98%;}
+  }
+  @keyframes scan-flicker{
+    0%,100%{opacity:0.6;}
+    50%{opacity:0.9;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .scan-line, .scan-wrap.scanning::after{animation:none;}
+  }
+
   .expense-item{
     display:flex;justify-content:space-between;align-items:flex-start;
     padding:10px 0;border-bottom:1px dashed var(--line);
@@ -201,11 +248,46 @@
   <section class="panel active" id="panel-scan">
     <div class="card">
       <h3>영수증 촬영 / 업로드</h3>
+
       <div class="capture-box" id="captureBox">
-        <div>영수증 사진을 촬영하거나 갤러리에서 선택하세요</div>
-        <input type="file" accept="image/*" capture="environment" id="fileInput" style="margin-top:12px;" />
-        <img id="previewImg" style="display:none;" />
+        <!-- 1) 최초 선택 화면 -->
+        <div id="captureInitial">
+          <div>영수증을 촬영하거나 앨범에서 선택하세요</div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="btn btn-primary" id="cameraBtn">📷 카메라로 촬영</button>
+            <button type="button" class="btn btn-ghost" id="galleryBtn">🖼 앨범에서 선택</button>
+          </div>
+          <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;">
+          <input type="file" accept="image/*" id="galleryInput" style="display:none;">
+        </div>
+
+        <!-- 2) 크롭 화면 -->
+        <div id="cropStage" style="display:none;">
+          <div style="font-size:12px;margin-bottom:6px;">모서리의 빨간 점을 드래그해 영수증 영역만 맞춰보세요</div>
+          <div class="crop-wrap" id="cropWrap">
+            <img id="cropImg" alt="크롭할 영수증 사진">
+            <div class="crop-box" id="cropBox">
+              <div class="crop-handle" id="cropHandle"></div>
+            </div>
+          </div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button type="button" class="btn btn-primary" id="cropConfirmBtn">✂️ 이 영역만 사용</button>
+            <button type="button" class="btn btn-ghost" id="cropSkipBtn">전체 사용</button>
+          </div>
+        </div>
+
+        <!-- 3) 최종 미리보기 (분석 중엔 스캔 효과 표시) -->
+        <div id="previewStage" style="display:none;">
+          <div class="scan-wrap" id="scanWrap">
+            <img id="previewImg" alt="분석할 영수증 사진">
+            <div class="scan-line" id="scanLine" style="display:none;"></div>
+          </div>
+          <div class="btn-row" style="margin-top:10px;">
+            <button type="button" class="btn btn-ghost" id="retakeBtn">↺ 다시 선택</button>
+          </div>
+        </div>
       </div>
+
       <div class="btn-row">
         <button class="btn btn-primary" id="analyzeBtn" disabled>🤖 AI로 분석하기</button>
       </div>
@@ -320,6 +402,6 @@
   </div>
 </div>
 
-<script src="expense_app.js?v=3"></script>
+<script src="expense_app.js?v=4"></script>
 </body>
 </html>
