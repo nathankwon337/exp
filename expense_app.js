@@ -124,7 +124,7 @@ function bindScanTab() {
 
       statusEl.textContent = '✅ 분석 완료! 내용을 확인하고 저장하세요.';
       statusEl.className = 'status-msg ok';
-      openEditModal(buildExpenseFromExtracted(data.extracted));
+      openEditModal(buildExpenseFromExtracted(data.extracted), 'new-from-ocr');
     } catch (err) {
       statusEl.textContent = '⚠️ 분석 실패: ' + err.message + ' (직접입력 탭에서 수동으로 입력할 수 있습니다)';
       statusEl.className = 'status-msg error';
