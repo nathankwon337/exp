@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>여행 가계부 · EuroTrip 2026</title>
+<style>
+  :root{
+    --paper:#faf6ee;
+    --paper-edge:#eee6d3;
+    --ink:#2b2620;
+    --ink-soft:#6b6255;
+    --red:#b3432b;
+    --green:#4c6b4f;
+    --line:#d8cdb8;
+    --card:#ffffff;
+    --mono: 'Courier New', ui-monospace, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--paper-edge);}
+  body{
+    font-family:var(--sans);
+    color:var(--ink);
+    -webkit-tap-highlight-color:transparent;
+  }
+  input,select,textarea{min-width:0;width:100%;font-family:inherit;font-size:16px;}
+
+  .app{
+    max-width:480px;
+    margin:0 auto;
+    background:var(--paper);
+    min-height:100vh;
+    box-shadow:0 0 24px rgba(0,0,0,0.08);
+    padding-bottom:84px;
+  }
+
+  header.top{
+    padding:20px 18px 14px;
+    border-bottom:2px dashed var(--line);
+  }
+  header.top .eyebrow{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:0.12em;
+    color:var(--ink-soft);
+    text-transform:uppercase;
+  }
+  header.top h1{
+    margin:4px 0 0;
+    font-size:22px;
+    font-weight:800;
+  }
+
+  .total-card{
+    margin:16px 18px 0;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:16px;
+    position:relative;
+  }
+  .total-card::before{
+    content:'';
+    position:absolute;
+    left:0;right:0;bottom:-1px;
+    height:0;
+    border-bottom:2px dashed var(--line);
+  }
+  .total-card .label{font-size:12px;color:var(--ink-soft);font-family:var(--mono);}
+  .total-card .amount{font-family:var(--mono);font-size:28px;font-weight:700;margin-top:4px;}
+  .total-card .sub{font-size:12px;color:var(--ink-soft);margin-top:6px;}
+
+  nav.tabs{
+    display:flex;
+    margin:18px 18px 0;
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  nav.tabs button{
+    flex:1;
+    padding:10px 4px;
+    background:var(--card);
+    border:none;
+    border-right:1px solid var(--line);
+    font-size:13px;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  nav.tabs button:last-child{border-right:none;}
+  nav.tabs button.active{
+    background:var(--ink);
+    color:var(--paper);
+    font-weight:700;
+  }
+
+  section.panel{padding:16px 18px 8px;display:none;}
+  section.panel.active{display:block;}
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px;
+    margin-bottom:12px;
+  }
+  .card h3{margin:0 0 10px;font-size:14px;color:var(--ink-soft);font-family:var(--mono);letter-spacing:0.04em;}
+
+  .field{margin-bottom:10px;}
+  .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;}
+  .field input, .field select, .field textarea{
+    padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);
+  }
+  .row2{display:flex;gap:8px;}
+  .row2 > .field{flex:1;}
+
+  .btn{
+    display:block;width:100%;text-align:center;
+    padding:12px;border-radius:8px;border:none;
+    font-size:15px;font-weight:700;cursor:pointer;
+  }
+  .btn-primary{background:var(--ink);color:var(--paper);}
+  .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
+  .btn-red{background:var(--red);color:#fff;}
+  .btn-row{display:flex;gap:8px;margin-top:4px;}
+  .btn-row .btn{flex:1;}
+
+  .capture-box{
+    border:2px dashed var(--line);
+    border-radius:10px;
+    padding:24px 14px;
+    text-align:center;
+    color:var(--ink-soft);
+    font-size:13px;
+  }
+  .capture-box img{max-width:100%;border-radius:8px;margin-top:10px;}
+  .status-msg{font-size:13px;margin-top:10px;text-align:center;color:var(--ink-soft);}
+  .status-msg.error{color:var(--red);}
+  .status-msg.ok{color:var(--green);}
+
+  .expense-item{
+    display:flex;justify-content:space-between;align-items:flex-start;
+    padding:10px 0;border-bottom:1px dashed var(--line);
+    cursor:pointer;
+  }
+  .expense-item:last-child{border-bottom:none;}
+  .expense-item .left{flex:1;padding-right:8px;}
+  .expense-item .cat{font-size:11px;color:var(--ink-soft);font-family:var(--mono);}
+  .expense-item .merchant{font-size:15px;font-weight:700;margin-top:2px;}
+  .expense-item .meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .expense-item .amount{font-family:var(--mono);font-weight:700;text-align:right;white-space:nowrap;}
+
+  .day-group{margin-bottom:14px;}
+  .day-group .day-label{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-bottom:4px;}
+
+  .summary-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px;}
+  .summary-row:last-child{border-bottom:none;}
+  .summary-row .amt{font-family:var(--mono);font-weight:700;}
+
+  .empty{padding:30px 10px;text-align:center;color:var(--ink-soft);font-size:13px;}
+
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(43,38,32,0.5);
+    display:none;align-items:flex-end;justify-content:center;z-index:50;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-sheet{
+    background:var(--paper);width:100%;max-width:480px;
+    border-radius:16px 16px 0 0;padding:18px;max-height:88vh;overflow-y:auto;
+  }
+  .modal-sheet h3{margin-top:0;}
+
+  footer.bottom-note{
+    padding:14px 18px 20px;font-size:11px;color:var(--ink-soft);line-height:1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <div class="eyebrow">EuroTrip 2026 · Expense Tracker</div>
+    <h1>여행 가계부</h1>
+  </header>
+
+  <div class="total-card">
+    <div class="label">이번 여행 총 지출 (원화 환산 · 임시 환율)</div>
+    <div class="amount" id="totalKrw">₩0</div>
+    <div class="sub" id="totalSub">아직 등록된 지출이 없습니다</div>
+  </div>
+
+  <nav class="tabs">
+    <button data-tab="scan" class="active">📷 촬영</button>
+    <button data-tab="manual">✏️ 직접입력</button>
+    <button data-tab="list">🧾 목록</button>
+    <button data-tab="summary">📊 요약</button>
+  </nav>
+
+  <!-- 촬영 탭 -->
+  <section class="panel active" id="panel-scan">
+    <div class="card">
+      <h3>영수증 촬영 / 업로드</h3>
+      <div class="capture-box" id="captureBox">
+        <div>영수증 사진을 촬영하거나 갤러리에서 선택하세요</div>
+        <input type="file" accept="image/*" capture="environment" id="fileInput" style="margin-top:12px;" />
+        <img id="previewImg" style="display:none;" />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="analyzeBtn" disabled>🤖 AI로 분석하기</button>
+      </div>
+      <div class="status-msg" id="scanStatus"></div>
+    </div>
+  </section>
+
+  <!-- 직접입력 탭 -->
+  <section class="panel" id="panel-manual">
+    <div class="card">
+      <h3>지출 직접 입력</h3>
+      <form id="manualForm">
+        <div class="row2">
+          <div class="field"><label>날짜</label><input type="date" name="date" required></div>
+          <div class="field"><label>카테고리</label>
+            <select name="category">
+              <option>식비</option><option>교통</option><option>숙박</option>
+              <option>쇼핑</option><option>관광입장료</option><option>기타</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>상점/장소 이름</label><input type="text" name="merchant" placeholder="예: Pork's Vodičkova" required></div>
+        <div class="row2">
+          <div class="field"><label>금액</label><input type="number" step="0.01" name="amount" required></div>
+          <div class="field"><label>통화</label>
+            <select name="currency">
+              <option>EUR</option><option>CZK</option><option>CHF</option><option>KRW</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>도시/국가</label><input type="text" name="city" placeholder="예: 프라하"></div>
+        <div class="field"><label>메모</label><input type="text" name="memo" placeholder="선택 입력"></div>
+        <button type="submit" class="btn btn-primary">저장하기</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- 목록 탭 -->
+  <section class="panel" id="panel-list">
+    <div id="listContainer"></div>
+  </section>
+
+  <!-- 요약 탭 -->
+  <section class="panel" id="panel-summary">
+    <div class="card">
+      <h3>카테고리별 합계</h3>
+      <div id="categorySummary"></div>
+    </div>
+    <div class="card">
+      <h3>통화별 원본 합계</h3>
+      <div id="currencySummary"></div>
+    </div>
+    <div class="card">
+      <h3>가족 동기화</h3>
+      <div class="field"><label>Apps Script 웹앱 URL</label><input type="text" id="webhookUrlInput" placeholder="https://script.google.com/macros/s/.../exec"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="saveUrlBtn">URL 저장</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="uploadBtn">지금 업로드</button>
+        <button class="btn btn-primary" id="downloadBtn">지금 불러오기</button>
+      </div>
+      <div class="status-msg" id="syncStatus"></div>
+    </div>
+  </section>
+
+  <footer class="bottom-note">
+    ⚠️ 1단계(OCR 자동분류) 버전입니다. 환율은 임시 고정값이며, 실시간 환율 연동은 2단계에서 추가될 예정입니다.
+  </footer>
+</div>
+
+<!-- 수정 모달 -->
+<div class="modal-overlay" id="editModalOverlay">
+  <div class="modal-sheet">
+    <h3>지출 수정</h3>
+    <form id="editForm">
+      <input type="hidden" name="id">
+      <div class="row2">
+        <div class="field"><label>날짜</label><input type="date" name="date" required></div>
+        <div class="field"><label>카테고리</label>
+          <select name="category">
+            <option>식비</option><option>교통</option><option>숙박</option>
+            <option>쇼핑</option><option>관광입장료</option><option>기타</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>상점/장소 이름</label><input type="text" name="merchant" required></div>
+      <div class="row2">
+        <div class="field"><label>금액</label><input type="number" step="0.01" name="amount" required></div>
+        <div class="field"><label>통화</label>
+          <select name="currency"><option>EUR</option><option>CZK</option><option>CHF</option><option>KRW</option></select>
+        </div>
+      </div>
+      <div class="field"><label>도시/국가</label><input type="text" name="city"></div>
+      <div class="field"><label>메모</label><input type="text" name="memo"></div>
+      <div class="btn-row">
+        <button type="submit" class="btn btn-primary">저장</button>
+        <button type="button" class="btn btn-red" id="deleteExpenseBtn">삭제</button>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-ghost" id="closeEditBtn">닫기</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="expense_app.js?v=1"></script>
+</body>
+</html>
